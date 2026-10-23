@@ -14,7 +14,7 @@ PIDFILE="$PROJECT_DIR/llama.pid"
 PORT="${PORT:-8080}"
 EXPERT_S="${LLAMA_EXPERT_S:-32}"
 NGL="${NGL:-20}"
-CTX="${CTX:-16384}"
+CTX="${CTX:-131072}"
 THREADS="${THREADS:-8}"
 
 start() {
