@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # run.sh - start/stop Qwen3.6-35B-A3B server in background
-# Usage: ./run.sh [start|stop|status|restart]
+# Usage: ./run.sh [start|stop|status|restart|log|check]
+#
+# Edge-of-knife config for RTX 3070 8GB + Xeon E5-2680 v4 + DDR4-2133.
+# Context stays at 128k. Experts are pushed to CPU (slow RAM) to free VRAM
+# for more non-expert layers on GPU. Tune via env vars:
+#   NGL=24 N_CPU_MOE=28 ./run.sh restart
+#   UBATCH=1024 ./run.sh restart
 
 set -euo pipefail
 
@@ -13,11 +19,12 @@ PIDFILE="$PROJECT_DIR/llama.pid"
 
 PORT="${PORT:-8080}"
 EXPERT_S="${LLAMA_EXPERT_S:-32}"
-NGL="${NGL:-20}"
+NGL="${NGL:-24}"
 CTX="${CTX:-131072}"
-THREADS="${THREADS:-8}"
+THREADS="${THREADS:-12}"
 
-N_CPU_MOE="${N_CPU_MOE:-0}"
+N_CPU_MOE="${N_CPU_MOE:-28}"
+UBATCH="${UBATCH:-1024}"
 
 start() {
     if [[ -f "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
@@ -37,12 +44,14 @@ start() {
 
     cd "$BUILD_DIR"
 
-    echo "Starting Qwen3.6-35B-A3B..."
+    echo "Starting Qwen3.6-35B-A3B (edge-of-knife)..."
     echo "  Port:       $PORT"
     echo "  Experts:    $EXPERT_S"
     echo "  GPU layers: $NGL"
-    echo "  CPU layers: $N_CPU_MOE"
+    echo "  CPU MoE:    $N_CPU_MOE"
     echo "  Context:    $CTX"
+    echo "  Threads:    $THREADS"
+    echo "  UBATCH:     $UBATCH"
     echo "  Log:        $LOG"
 
     LLAMA_EXPERT_S="$EXPERT_S" nohup "$SERVER" \
@@ -53,6 +62,9 @@ start() {
         -ngl "$NGL" \
         --n-cpu-moe "$N_CPU_MOE" \
         -t "$THREADS" \
+        --ubatch-size "$UBATCH" \
+        --flash-attn on \
+        --no-mmap \
         -ctk q8_0 \
         -ctv q8_0 \
         --reasoning off \
@@ -60,7 +72,8 @@ start() {
 
     echo $! >"$PIDFILE"
     echo "Started (PID $(cat "$PIDFILE"))"
-    echo "Wait ~20 sec, then open: http://localhost:$PORT"
+    echo "Wait ~20 sec, then check: ./run.sh check"
+    echo "Open: http://localhost:$PORT"
 }
 
 stop() {
@@ -92,6 +105,24 @@ status() {
     fi
 }
 
+check() {
+    echo "Checking log for startup failures..."
+    if grep -qE "CUDA out of memory|failed to allocate|error loading model|unknown argument" "$LOG" 2>/dev/null; then
+        echo ""
+        echo "WARNING: possible startup failure detected."
+        echo "Last 40 lines of log:"
+        tail -n 40 "$LOG"
+        echo ""
+        echo "Fallback options:"
+        echo "    NGL=20 N_CPU_MOE=32 ./run.sh restart"
+        echo "    CTX=65536 ./run.sh restart   # if 128k does not fit"
+    else
+        echo "OK: no startup errors found in log."
+        echo "Recent timing lines:"
+        grep -E "eval time|prompt eval time|n_decoded" "$LOG" | tail -10 || true
+    fi
+}
+
 case "${1:-start}" in
 start) start ;;
 stop) stop ;;
@@ -102,8 +133,9 @@ restart)
     start
     ;;
 log) tail -f "$LOG" ;;
+check) check ;;
 *)
-    echo "Usage: $0 {start|stop|status|restart}"
+    echo "Usage: $0 {start|stop|status|restart|log|check}"
     exit 1
     ;;
 esac
