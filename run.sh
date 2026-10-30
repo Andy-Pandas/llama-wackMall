@@ -17,6 +17,8 @@ NGL="${NGL:-20}"
 CTX="${CTX:-131072}"
 THREADS="${THREADS:-8}"
 
+N_CPU_MOE="${N_CPU_MOE:-0}"
+
 start() {
     if [[ -f "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
         echo "Server already running (PID $(cat "$PIDFILE"))"
@@ -36,10 +38,12 @@ start() {
     cd "$BUILD_DIR"
 
     echo "Starting Qwen3.6-35B-A3B..."
-    echo "  Port:     $PORT"
-    echo "  Experts:  $EXPERT_S"
+    echo "  Port:       $PORT"
+    echo "  Experts:    $EXPERT_S"
     echo "  GPU layers: $NGL"
-    echo "  Log:      $LOG"
+    echo "  CPU layers: $N_CPU_MOE"
+    echo "  Context:    $CTX"
+    echo "  Log:        $LOG"
 
     LLAMA_EXPERT_S="$EXPERT_S" nohup "$SERVER" \
         -m "$MODEL" \
@@ -47,9 +51,11 @@ start() {
         --host 127.0.0.1 \
         --port "$PORT" \
         -ngl "$NGL" \
+        --n-cpu-moe "$N_CPU_MOE" \
         -t "$THREADS" \
         -ctk q8_0 \
         -ctv q8_0 \
+        --reasoning off \
         >"$LOG" 2>&1 &
 
     echo $! >"$PIDFILE"
