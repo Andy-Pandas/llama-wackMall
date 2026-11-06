@@ -30,6 +30,7 @@ start() {
 
     nohup "$SERVER" \
         --models-preset "$PRESET" \
+        --models-max 1 \
         --host 127.0.0.1 \
         --port "$PORT" \
         > "$LOG" 2>&1 &
