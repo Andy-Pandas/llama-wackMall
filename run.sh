@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
-# run.sh - start/stop llama-server with multi-model presets
-# Usage: ./run.sh [start|stop|status]
-# All model parameters are in models-presets.ini
-# Pi-agent (pi-llama-server) handles model switching via /models API
+# run.sh - start/stop Qwen3.6-35B-A3B server in background (single model, direct)
+# Usage: ./run.sh [start|stop|status|log]
+#
+# Direct launch (no router). Edge-of-knife config for RTX 3070 8GB +
+# Xeon E5-2680 v4 + DDR4-2133. ~7 tok/s. Experts pushed to CPU to free
+# VRAM for more non-expert layers on GPU.
+#   LLAMA_EXPERT_S  hot expert slots per layer (env, 32 by default)
 
 set -euo pipefail
 
 PROJECT_DIR="$HOME/exp/llama-wackMall"
 SERVER="$PROJECT_DIR/build/bin/llama-server"
-PRESET="$PROJECT_DIR/models-presets.ini"
+MODEL="$PROJECT_DIR/models/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf"
 PIDFILE="$PROJECT_DIR/llama.pid"
 LOG="$PROJECT_DIR/llama.log"
 PORT="${PORT:-8080}"
+
+EXPERT_S="${LLAMA_EXPERT_S:-32}"
 
 start() {
     if [[ -f "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
@@ -19,26 +24,39 @@ start() {
         exit 0
     fi
 
+    if [[ ! -f "$MODEL" ]]; then
+        echo "Error: model not found: $MODEL"
+        exit 1
+    fi
+
     if [[ ! -x "$SERVER" ]]; then
         echo "Error: server binary not found: $SERVER"
         exit 1
     fi
 
-    echo "Starting llama-server with presets: $PRESET"
-    echo "  Port:   $PORT"
-    echo "  URL:    http://127.0.0.1:$PORT"
+    echo "Starting Qwen3.6-35B-A3B (single model, direct)..."
+    echo "  Port:      $PORT"
+    echo "  Experts:   $EXPERT_S"
+    echo "  GPU layers:24 | CPU MoE: 28 | no-mmap | ctx 128k"
 
-    nohup "$SERVER" \
-        --models-preset "$PRESET" \
-        --models-max 1 \
+    LLAMA_EXPERT_S="$EXPERT_S" nohup "$SERVER" \
+        -m "$MODEL" \
+        -c 131072 \
         --host 127.0.0.1 \
         --port "$PORT" \
-        > "$LOG" 2>&1 &
+        -ngl 24 \
+        --n-cpu-moe 28 \
+        --no-mmap \
+        -ctk q8_0 \
+        -ctv q8_0 \
+        --flash-attn on \
+        --reasoning off \
+        >"$LOG" 2>&1 &
 
     echo $! >"$PIDFILE"
     echo "Started (PID $(cat "$PIDFILE"))"
     echo "Log:  $LOG"
-    echo "Wait ~10 sec, then check: $0 status"
+    echo "Open: http://localhost:$PORT"
 }
 
 stop() {
