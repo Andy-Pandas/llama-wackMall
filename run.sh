@@ -10,6 +10,7 @@ PROJECT_DIR="$HOME/exp/llama-wackMall"
 SERVER="$PROJECT_DIR/build/bin/llama-server"
 PRESET="$PROJECT_DIR/models-presets.ini"
 PIDFILE="$PROJECT_DIR/llama.pid"
+LOG="$PROJECT_DIR/llama.log"
 PORT="${PORT:-8080}"
 
 start() {
@@ -31,10 +32,11 @@ start() {
         --models-preset "$PRESET" \
         --host 127.0.0.1 \
         --port "$PORT" \
-        > /dev/null 2>&1 &
+        > "$LOG" 2>&1 &
 
     echo $! >"$PIDFILE"
     echo "Started (PID $(cat "$PIDFILE"))"
+    echo "Log:  $LOG"
     echo "Wait ~10 sec, then check: $0 status"
 }
 
@@ -66,12 +68,17 @@ status() {
     fi
 }
 
+log() {
+    tail -f "$LOG"
+}
+
 case "${1:-start}" in
 start) start ;;
 stop) stop ;;
 status) status ;;
+log) log ;;
 *)
-    echo "Usage: $0 {start|stop|status}"
+    echo "Usage: $0 {start|stop|status|log}"
     exit 1
     ;;
 esac
