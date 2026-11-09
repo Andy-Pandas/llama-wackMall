@@ -3,8 +3,9 @@
 # Usage: ./run.sh [start|stop|status|log]
 #
 # Direct launch (no router). Optimized per bench b11540 for RTX 3070 8GB +
-# Xeon E5-2680 v4. ~16 tok/s (up from 3.3). Adds MTP draft, more threads,
-# tuned ubatch. Context stays 128k.
+# Xeon E5-2680 v4. ~16 tok/s (up from 3.3). Tuned threads/ubatch.
+# NOTE: UD-Q4_K_XL has NO MTP/draft layers, so draft-mtp is not used.
+# Context stays 128k.
 #   LLAMA_EXPERT_S  hot expert slots per layer (env, 32 by default)
 
 set -euo pipefail
@@ -34,10 +35,10 @@ start() {
         exit 1
     fi
 
-    echo "Starting Qwen3.6-35B-A3B (single model, direct, MTP draft)..."
+    echo "Starting Qwen3.6-35B-A3B (single model, direct)..."
     echo "  Port:      $PORT"
     echo "  Experts:   $EXPERT_S"
-    echo "  GPU layers:24 | CPU MoE: 28 | no-mmap | ctx 128k | MTP draft"
+    echo "  GPU layers:24 | CPU MoE: 28 | no-mmap | ctx 128k | -t 20 -ub 512"
 
     LLAMA_EXPERT_S="$EXPERT_S" nohup "$SERVER" \
         -m "$MODEL" \
@@ -53,8 +54,6 @@ start() {
         --reasoning off \
         -t 20 \
         -ub 512 \
-        --spec-type draft-mtp \
-        --spec-draft-n-max 2 \
         >"$LOG" 2>&1 &
 
     echo $! >"$PIDFILE"
